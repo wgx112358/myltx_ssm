@@ -1,0 +1,58 @@
+# Route-3 Phase A pilot (v2_qb future artifact policy variant).
+
+# --- Model paths ---
+base_checkpoint: "/inspire/hdd/project/agileapplication/zhangkaipeng-24043/wgx/myltx/model/ltx-2.3-22b-distilled.safetensors"
+gemma_path: "/inspire/hdd/project/agileapplication/zhangkaipeng-24043/wgx/myltx/model/gemma"
+
+# --- SSM config ---
+ssm_d_state: 64
+ssm_gate_bias: -2.0
+ssm_switch_state_decay: 0.25
+
+# --- Training mode ---
+freeze_base: true
+learning_rate: 1.0e-4
+weight_decay: 0.01
+max_grad_norm: 1.0
+total_steps: 300
+warmup_steps: 500
+batch_size: 1
+gradient_accumulation_steps: 4
+
+# --- Sequence chunking ---
+block_size: 6
+window_blocks: 4
+
+# --- Self-forcing ---
+self_forcing: false
+self_forcing_start_step: 2000
+
+# --- Loss weights ---
+video_loss_weight: 1.0
+audio_loss_weight: 1.0
+memory_loss_weight: 0.1
+keep_loss_weight: 1.0
+edit_loss_weight: 1.0
+switch_loss_weight: 1.0
+use_asymmetric_switching: true
+
+# --- Data ---
+data_root: "/inspire/qb-ilm/project/agileapplication/zhangkaipeng-24043/wgx/myltx-v1/ode/data_distilled_stage2_ode_phaseA_256_v2_qb"
+allow_synthetic_fallback: false
+max_data_samples: 0
+switch_episode_manifest: "/inspire/qb-ilm/project/agileapplication/zhangkaipeng-24043/wgx/myltx-v1/ode/switch_episodes_longlive_phaseA_256_v2_qb.jsonl"
+num_workers: 2
+smoke_max_prompt_tokens: 64
+smoke_max_video_frames: 2
+smoke_max_video_height: 12
+smoke_max_video_width: 16
+smoke_max_audio_time_steps: 24
+
+# --- Logging ---
+log_interval: 10
+checkpoint_interval: 50
+output_dir: "/inspire/qb-ilm/project/agileapplication/zhangkaipeng-24043/wgx/myltx-v1/outputs/self_forcing_longlive_phaseA_decay025_v2_qb"
+
+# --- Misc ---
+seed: 42
+mixed_precision: "bf16"

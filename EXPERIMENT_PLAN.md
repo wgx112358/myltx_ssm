@@ -1,6 +1,6 @@
 # Experiment Plan
 
-**Topic**: Edit-Scoped Persistent Memory for streaming long-horizon audio-video generation on LTX-2.3-distilled  
+**Topic**: Counterfactual edit isolation with cross-modal typed persistent memory for streaming long-horizon audio-video generation on LTX-2.3-distilled  
 **Date**: 2026-03-20
 
 ## Problem Anchor
@@ -9,14 +9,20 @@ Open LTX-2.3-distilled can generate strong short synchronized audio-video clips,
 
 - streaming extension to long horizons,
 - interactive prompt switching mid-generation,
-- preserving persistent world state,
+- preserving typed persistent world state,
 - while selectively applying only the requested changes.
+
+The immediate engineering blocker is simpler than the final paper claim:
+
+- before studying prompt-switch isolation,
+- we need a stable long-horizon streaming joint AV backbone,
+- with persistent visual state, auditory state, and cross-modal binding that do not collapse over time.
 
 ## Thesis
 
 Separate generation into:
 
-- **persistent world state**,
+- **typed persistent world state**,
 - **switchable prompt-conditioned control**,
 - **edit scope** that determines what may change.
 
@@ -25,6 +31,7 @@ The mechanism should preserve:
 - character identity,
 - voice timbre / speaking style,
 - scene and background layout,
+- ambient acoustic scene and persistent sound sources,
 - overall style and atmosphere,
 
 while still changing:
@@ -35,20 +42,21 @@ while still changing:
 
 ### Claim 1
 
-Selective persistent memory beats both:
+A stable streaming joint AV backbone requires explicit persistent state for:
 
-- recache-only switching,
-- and global-memory-decay switching,
-
-on long-horizon prompt-switch consistency.
+- visual world state,
+- auditory world state,
+- and cross-modal binding.
 
 ### Claim 2
 
-Factoring memory into entity / scene / audio banks improves selective editability over a monolithic memory state.
+Once the long-horizon backbone is stable, counterfactual edit isolation improves:
 
-### Claim 3
+- edit success,
+- non-target preservation,
+- and post-switch AV consistency
 
-Joint AV persistent state improves voice and identity stability without sacrificing post-switch prompt adherence.
+over recache-only and global scalar decay baselines.
 
 ## What Already Exists In Code
 
@@ -58,51 +66,56 @@ Joint AV persistent state improves voice and identity stability without sacrific
 - Switch-aware chunk losses.
 - Real AV distilled ODE-regression data plumbing.
 
-## Minimal Implementation Delta
+## Experimental Strategy
 
-### Phase A: Scope-aware data and metadata
+### Stage A: Long-Horizon Joint AV Backbone First
 
-Add `edit_scope` to switch manifests and schedules.
+Before prompt-switch experiments, build and validate a no-switch streaming backbone.
 
-Suggested scope vocabulary:
+**Goal**
 
-- `entity`
-- `scene`
-- `style`
-- `audio`
-- `entity+style`
-- `scene+style`
-- `entity+audio`
+Show that the system can continue generation for long horizons while preserving:
 
-### Phase B: Selective memory banks
+- visual identity and scene continuity,
+- auditory continuity,
+- cross-modal role / speaker binding,
+- AV sync after many chunks.
 
-Replace one monolithic switch-decay rule with three banks:
+**Why this stage comes first**
 
-- `entity_memory`
-- `scene_memory`
-- `audio_memory`
+- It removes the confound of switch data design.
+- It tells us whether persistent auditory state is even being carried.
+- It is the cheapest path to a usable training and evaluation scaffold.
 
-Each chunk should carry:
+**Important constraint**
 
-- `prompt_switch_flag`
-- `edit_scope`
-- per-bank update / preserve mask
+This stage is a bridge milestone, not the final paper novelty. By itself, "longer streaming AV generation" is too crowded.
 
-### Phase C: Losses
+### Stage B: Prompt-Switch Isolation on Top of the Backbone
 
-Keep current chunk losses, but add structured objectives:
+Once Stage A is stable, add intervention-specific machinery:
 
-- `preserve_loss`: unchanged attributes should stay stable,
-- `edit_success_loss`: targeted attributes should change,
-- `binding_loss`: voice identity should stay aligned with the intended speaker or entity.
+- typed `edit_scope`,
+- counterfactual continuation,
+- selective typed state mutation,
+- preservation-edit frontier evaluation.
 
-### Phase D: Evaluation harness
+### Minimal Implementation Delta for Stage A
 
-Add a switch benchmark with 3 edit families:
+1. Keep the current streaming stack and real ODE-regression data path.
+2. Train and evaluate long-horizon continuation without prompt switches first.
+3. Make persistent state explicit for:
+   - visual continuity,
+   - auditory continuity,
+   - cross-modal binding.
+4. Add parseable metrics and logging for drift over horizon.
 
-- identity-preserving local edits,
-- style / atmosphere edits,
-- speech or voice-style edits.
+### Minimal Implementation Delta for Stage B
+
+1. Add `edit_scope` to switch manifests and schedules.
+2. Replace scalar switch decay with typed mutation policies.
+3. Add counterfactual continuation targets.
+4. Measure the preservation-edit frontier directly.
 
 ## Baselines
 
@@ -111,7 +124,8 @@ Add a switch benchmark with 3 edit families:
 1. Chunked LTX-2.3-distilled with no memory.
 2. Chunked generation with recache only.
 3. Chunked generation with current scalar `ssm_switch_state_decay`.
-4. ESPM with selective bank updates.
+4. Typed persistent memory without prompt switches.
+5. Counterfactual edit isolation with typed state mutation.
 
 ### Ablations
 
@@ -120,6 +134,13 @@ Add a switch benchmark with 3 edit families:
 3. No audio bank.
 4. Monolithic memory instead of banked memory.
 5. Always freeze memory after switch.
+
+### Stage A-specific ablations
+
+1. No auditory persistent state.
+2. Shared AV memory vs typed memory.
+3. No explicit binding state.
+4. Horizon length sweep.
 
 ## Metrics
 
@@ -139,12 +160,22 @@ Add a switch benchmark with 3 edit families:
 
 - speaker embedding consistency,
 - speaking-style consistency,
+- ambient acoustic continuity,
+- persistent sound-source continuity,
 - sync quality proxy for AV alignment.
 
 ### Joint AV metrics
 
 - voice-to-entity binding consistency,
+- turn-taking / role persistence,
 - post-switch AV sync retention.
+
+### Stage A backbone metrics
+
+- long-horizon visual drift,
+- long-horizon audio drift,
+- long-horizon binding drift,
+- horizon-to-failure under no-switch continuation.
 
 ### Standard external evaluation
 
@@ -155,9 +186,13 @@ Add a switch benchmark with 3 edit families:
 
 ## Datasets / Episode Construction
 
-### Smoke benchmark
+### Stage A smoke benchmark
 
-Use existing switch manifests and distilled ODE data to create a tiny scope-labeled benchmark.
+Use existing real distilled ODE data to create a no-switch long-horizon continuation benchmark first.
+
+### Stage B switch benchmark
+
+Use existing switch manifests and then extend them with typed scope labels.
 
 ### Main benchmark
 
@@ -171,20 +206,40 @@ Construct multi-turn switch episodes with explicit edit types:
 
 ## Run Order
 
-1. Add `edit_scope` to manifest format and chunk schedule metadata.
-2. Add selective per-bank update logic to current SSM path.
-3. Run smoke training on a tiny scope-labeled set.
-4. Run switch-mode inference with plan dumps and metadata inspection.
-5. Evaluate recache-only vs scalar-decay vs ESPM.
-6. Add audio-specific stability and binding metrics.
-7. Launch the first larger ablation on real data.
+### Stage A: Backbone
+
+1. Run no-switch long-horizon sanity training on real data.
+2. Add explicit metrics for visual, auditory, and binding drift over horizon.
+3. Compare:
+   - no memory
+   - scalar decay
+   - typed persistent state
+4. Validate that audio persistence is real, not incidental.
+
+### Stage B: Prompt-switch isolation
+
+5. Add `edit_scope` to manifest format and chunk schedule metadata.
+6. Add typed state mutation logic and counterfactual continuation targets.
+7. Run switch-mode inference with plan dumps and metadata inspection.
+8. Evaluate recache-only vs scalar-decay vs typed mutation.
+9. Measure the preservation-edit frontier.
+10. Launch the first larger ablation on real data.
 
 ## Success Criteria For The First Round
 
+### Stage A success
+
 - training runs end-to-end on real data,
+- long-horizon continuation works without prompt switches,
+- audio drift is measurable and improved by explicit auditory state,
+- cross-modal binding does not collapse over horizon,
+- results are saved in parseable form.
+
+### Stage B success
+
 - chunk metadata contains correct scope labels,
-- selective bank updates change runtime behavior,
-- ESPM beats recache-only and scalar-decay baselines on at least one selective-edit benchmark,
+- typed state mutation changes runtime behavior,
+- the method beats recache-only and scalar-decay baselines on at least one selective-edit benchmark,
 - qualitative demos clearly show:
   - identity preserved,
   - voice preserved,
@@ -197,3 +252,15 @@ Construct multi-turn switch episodes with explicit edit types:
 - full pipeline rewrite inside `ltx_pipelines`,
 - broad world-modeling claims,
 - 3D scene reconstruction claims.
+
+## Frozen Execution Decision
+
+The first implementation milestone will **not** start with prompt switches.
+
+It will start with:
+
+- a no-switch long-horizon streaming joint AV backbone,
+- explicit auditory persistence checks,
+- explicit cross-modal binding checks.
+
+Prompt-switch experiments remain the second milestone, after the backbone is stable.

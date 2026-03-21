@@ -1,6 +1,6 @@
 # Idea Discovery Report
 
-**Direction**: Selective persistent memory for streaming long-horizon audio-video generation with interactive prompt switching on top of LTX-2.3-distilled.  
+**Direction**: Counterfactual edit isolation with cross-modal typed persistent memory for streaming long-horizon audio-video generation with interactive prompt switching on top of LTX-2.3-distilled.  
 **Date**: 2026-03-20  
 **Pipeline**: research-lit -> idea-creator -> novelty-check -> research-review -> implementation handoff
 
@@ -8,7 +8,7 @@
 
 The strongest direction is no longer "add memory to long video generation." The sharper and more defensible thesis is:
 
-> Build an **Edit-Scoped Persistent Memory** mechanism that separates **persistent world state** from **switchable prompt control**, so a streaming audio-video generator can preserve character identity, voice, scene style, and background atmosphere across long horizons while still applying user prompt changes selectively.
+> Build a **Counterfactual Edit Isolation** mechanism on top of **Cross-Modal Typed Persistent Memory**, so a streaming audio-video generator changes only the intended visual and auditory factors under prompt switches while preserving non-target state.
 
 This wedge is promising because the closest lines of work are still fragmented as of **March 20, 2026**:
 - streaming long-form generation papers mostly focus on continuation and cache stability,
@@ -24,7 +24,7 @@ The current `myltx-v1` codebase already contains the right substrate:
 - switch-weighted training losses,
 - real AV distilled ODE data plumbing.
 
-The missing leap is that the current switch logic is still essentially a **global decay / global recache** mechanism, not a true selective persistence mechanism.
+The missing leap is that the current switch logic is still essentially a **global decay / global recache** mechanism, not a typed state-mutation mechanism. In particular, `audio` is still treated too much like a side-effect of video continuity, rather than a first-class persistent state.
 
 ## Literature Landscape
 
@@ -87,18 +87,27 @@ The missing leap is that the current switch logic is still essentially a **globa
 
 ## Ranked Ideas
 
-### 1. Edit-Scoped Persistent Memory for Streaming AV Generation — RECOMMENDED
+### 1. Counterfactual Edit Isolation with Cross-Modal Typed Persistent Memory — RECOMMENDED
 
 **Core thesis**
 
-Persist world state across the stream, but make prompt-switch updates selective instead of global.
+At every prompt switch, compare the edited continuation against a counterfactual "would-have-continued" branch, and only commit changes to the typed persistent states that are meant to change.
 
 **World state to persist**
 
-- character identity,
-- voice timbre and speaking style,
-- scene/background layout,
-- style and atmosphere.
+- `visual world state`
+  - character appearance
+  - scene/background layout
+  - style and atmosphere
+- `auditory world state`
+  - speaker timbre
+  - speaking style / prosody
+  - ambient acoustic scene
+  - persistent sound sources
+- `cross-modal binding state`
+  - who is speaking
+  - who that voice belongs to
+  - turn-taking / interruption / response roles
 
 **What changes on a prompt switch**
 
@@ -110,10 +119,10 @@ Persist world state across the stream, but make prompt-switch updates selective 
 - It is not just "memory for long video."
 - It is not just "prompt recache for interaction."
 - It is not just "identity preservation."
-- It is the explicit decomposition of:
-  - **persistent state**,
-  - **switchable control**,
-  - **edit scope**,
+- It is an explicit claim about:
+  - **typed state mutability under intervention**
+  - **auditory state as a first-class persistent variable**
+  - **counterfactual edit isolation**
   on top of an open joint AV foundation model.
 
 **Why this fits the codebase**
@@ -125,7 +134,7 @@ Persist world state across the stream, but make prompt-switch updates selective 
 
 **Main gap**
 
-Current code only provides **global switch decay** via `ssm_switch_state_decay`, not selective state retention by state type.
+Current code only provides **global switch decay** via `ssm_switch_state_decay`, not selective state retention by type or counterfactual edit isolation.
 
 ### 2. Cross-Modal Identity Binding Memory — BACKUP
 
@@ -192,70 +201,206 @@ Separate recacheable prompt-conditioned control from persistent world-state toke
 
 ### Name
 
-**Edit-Scoped Persistent Memory (ESPM)**
+**Counterfactual Edit Isolation with Cross-Modal Typed Persistent Memory**
 
 ### Minimal mechanism
 
-1. Factor persistent memory into three banks:
-   - `entity_memory`,
-   - `scene_memory`,
-   - `audio_memory`.
-2. At each prompt switch, compute a lightweight `edit_scope`:
-   - `entity`,
-   - `scene`,
-   - `style`,
-   - `audio`,
-   - combinations of the above.
-3. Use `edit_scope` to decide:
-   - which memory banks can update,
-   - which banks are decayed,
-   - which banks are preserved,
-   - which banks contribute retrieval at the next chunk.
-4. Keep short-range prompt control and recache logic separate from persistent memory.
-5. Train with counterfactual multi-turn edits so the model learns:
-   - change the targeted attributes,
-   - preserve the untargeted attributes.
+1. Factor persistent memory into three typed state classes:
+   - `visual world state`
+   - `auditory world state`
+   - `cross-modal binding state`
+2. At each prompt switch, compute a lightweight `edit_scope` over these state classes.
+3. Keep a counterfactual continuation target that estimates what the stream would have done without the edit.
+4. Commit updates only to the typed states the edit is allowed to change.
+5. Preserve non-target states by explicitly comparing the edited rollout against the counterfactual branch.
 
 ### Why this is better than the current scalar decay
 
 The current `ssm_switch_state_decay` answers only one question:
 "How much should all memory fade when the prompt changes?"
 
-ESPM answers the real research question:
-"Which parts of memory should change, which parts should stay, and how do we prove that distinction helps?"
+The frozen idea answers the real research question:
+"Which state types should change, which should stay, and how do we prove that auditory and binding state are preserved unless the edit truly targets them?"
 
 ## Reviewer Risks
 
 - "This is just cache engineering with a new name."
 - "Edit scope is heuristic and may not generalize."
 - "Identity preservation can conflict with editability."
-- "Audio identity claims are weak without strong voice metrics."
+- "Audio memory is just a side branch of visual memory."
 - "Long-horizon claims need stronger evaluation than short-clip quality benchmarks."
 
 ## How To Defend The Novelty
 
 - Make the decomposition explicit:
-  - prompt control is recacheable,
-  - world state is persistent,
-  - edit scope decides which persistent state is mutable.
+  - prompt control is transient,
+  - persistent state is typed,
+  - auditory state is first-class,
+  - edit scope decides which typed state is mutable.
 - Show that memory alone is insufficient:
   - compare against always-preserve and always-update baselines.
 - Show that recache alone is insufficient:
   - compare against recache-only switch handling.
 - Make audio-video part real:
-  - include voice identity and cross-modal binding metrics, not only video demos.
+  - include voice identity, ambient persistence, and cross-modal binding metrics, not only video demos.
 
 ## Auto-Selected Idea
 
 With `AUTO_PROCEED=true`, the selected idea is:
 
-**Idea 1: Edit-Scoped Persistent Memory for Streaming AV Generation**
+**Idea 1: Counterfactual Edit Isolation with Cross-Modal Typed Persistent Memory**
 
 ## Immediate Next Step
 
 Do not rewrite the whole streaming stack. The highest-leverage next implementation delta is:
 
-1. extend switch manifests with `edit_scope`,
+1. extend switch manifests with typed `edit_scope`,
 2. propagate chunk-level scope metadata through the current schedule builder,
-3. replace scalar switch decay with per-bank selective update rules,
+3. replace scalar switch decay with typed mutation policies,
+4. make `audio` and `binding` explicit persistent state targets,
+5. measure the preservation-edit frontier directly.
+
+## Refinement After Novelty Check
+
+The broad ESPM framing is too wide. The idea should be narrowed from:
+
+- "better persistent memory for streaming AV generation"
+
+to:
+
+- "selective state mutability under prompt switches in streaming joint AV generation"
+
+### What to drop
+
+- Do not sell `persistent world state vs prompt control` as the main novelty.
+- Do not sell generic memory banks as the main novelty.
+- Do not sell identity consistency or AV sync as the main contribution.
+
+Those are now crowded by recent work such as interactive streaming memory, memory retrieval, and personalized joint AV generation.
+
+### What to keep
+
+- Prompt switches are the core intervention.
+- The important question is not how much history to keep, but which state types should change and which should not.
+- Audio must be first-class, not an add-on.
+- Evaluation should center on `Edit Success vs Non-Target Preservation`.
+
+## Refined Idea Variants
+
+### 1. Anchor-Conditioned Typed Memory Writes — RECOMMENDED
+
+**Thesis**
+
+Use prompt-switch anchors and typed edit scope as explicit write permissions for persistent memory, so different AV state types update selectively rather than uniformly.
+
+**Why this is stronger**
+
+- Directly addresses the closest streaming baseline family.
+- Moves the contribution from "more memory" to "controlled memory mutation."
+- Reuses the current stack: switch manifests, recache path, SSM state, and prompt-switch metadata.
+
+**Main risk**
+
+- If gains mostly look like better continuity, reviewers may collapse it into anchor/re-cache work.
+
+### 2. Counterfactual Edit Memory
+
+**Thesis**
+
+Keep a frozen "would-have-continued" branch and only commit memory updates that improve the target edit while preserving non-target content against that counterfactual.
+
+**Why this is stronger**
+
+- Makes preservation a causal comparison, not only a heuristic.
+- Gives a cleaner story for non-target preservation.
+
+**Main risk**
+
+- More expensive to implement and evaluate.
+- Can look like a regularization trick unless the counterfactual branch changes outcomes clearly.
+
+### 3. Audio-Video Scope-Coupled Memory
+
+**Thesis**
+
+Represent prompt switches as typed AV edit scopes and update persistent memory only when visual and audio evidence agree on the intended change.
+
+**Why this is stronger**
+
+- Pushes novelty into cross-modal edit binding, where close video-memory baselines are weaker.
+- Keeps audio first-class.
+
+**Main risk**
+
+- Requires stronger scope labels or proxies.
+- If the AV coupling signal is weak, it will read as a narrow extension.
+
+### 4. Reversible Memory Commits
+
+**Thesis**
+
+Treat post-switch memory writes as provisional and roll them back if later evidence shows the change was transient or leaked outside scope.
+
+**Why this is stronger**
+
+- Sharpens the contribution from retention to memory governance.
+
+**Main risk**
+
+- May be over-engineered if rollback events are rare or hard to define.
+
+### 5. Edit-Locality Benchmark + Objective
+
+**Thesis**
+
+Formalize long-horizon prompt-switch generation around locality: target change, collateral drift, cross-modal leakage, and recovery latency.
+
+**Why this is stronger**
+
+- Survives even if broad method novelty is partly collapsed.
+- Gives a clean reviewer-facing target that current papers under-measure.
+
+**Main risk**
+
+- Benchmark-centric papers are often judged as less ambitious unless the protocol is clearly indispensable.
+
+## Recommended Narrowing
+
+If the goal is the best novelty-to-effort ratio, the idea should be narrowed to:
+
+### Typed Memory Mutation Under Prompt Switches
+
+**Paper-level claim**
+
+Streaming joint AV generation fails not because it cannot retain history, but because it lacks explicit control over which visual, auditory, and binding states may mutate under prompt switches.
+
+**Mechanism**
+
+- typed edit scope,
+- counterfactual continuation target,
+- typed mutation of persistent state,
+- explicit AV preservation-edit metrics.
+
+**Evaluation**
+
+- compare against recache-only,
+- compare against scalar global decay,
+- compare against anchor-guided streaming baselines,
+- report the preservation-edit frontier instead of isolated consistency numbers,
+- include non-audio edits that should preserve audio state,
+- include audio edits that should preserve visual state.
+
+## Frozen Version
+
+### Problem Anchor
+
+Interactive streaming joint AV generation fails because current systems do not model `auditory state` and `cross-modal binding` as persistent, selectively mutable state variables.
+
+### Method Thesis
+
+Use counterfactual edit isolation with cross-modal typed persistent memory so prompt switches update only the intended visual, auditory, and binding states.
+
+### Dominant Contribution
+
+Not better generic memory retention, but **typed cross-modal state mutation under intervention**, with auditory memory as a first-class component.
 4. add preservation-vs-edit metrics and a first switch benchmark.
