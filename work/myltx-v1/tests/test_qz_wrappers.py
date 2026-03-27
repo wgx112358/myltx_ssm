@@ -29,6 +29,12 @@ def test_streaming_backbone_smoke_defaults_to_official_num_frames() -> None:
     assert 'CHUNK_NUM_FRAMES="${CHUNK_NUM_FRAMES:-121}"' in script
 
 
+def test_streaming_backbone_smoke_enables_expandable_segments_allocator() -> None:
+    script = (REPO_ROOT / "qz" / "run_streaming_backbone_smoke.sh").read_text(encoding="utf-8")
+
+    assert 'PYTORCH_CUDA_ALLOC_CONF="${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True}"' in script
+
+
 def test_step300_demo_wrapper_defaults_to_official_frame_rate() -> None:
     script = (REPO_ROOT / "qz" / "run_official_2stage_backbone_demo_step300.sh").read_text(encoding="utf-8")
 

@@ -272,6 +272,24 @@ class OfficialDistilledChunkRunner:
         _cuda_synchronize()
         cleanup_memory()
 
+    def _prepare_video_decode_components(self) -> None:
+        if self.device.type != "cuda":
+            return
+        cpu = torch.device("cpu")
+        self._audio_decoder = self._move_module(self._audio_decoder, device=cpu, dtype=self.dtype)
+        self._vocoder = self._move_module(self._vocoder, device=cpu, dtype=self.dtype)
+        self._video_decoder = self._move_module(self._video_decoder, device=self.device, dtype=self.dtype)
+        _cuda_synchronize()
+        cleanup_memory()
+
+    def _prepare_audio_decode_components(self) -> None:
+        if self.device.type != "cuda":
+            return
+        self._audio_decoder = self._move_module(self._audio_decoder, device=self.device, dtype=self.dtype)
+        self._vocoder = self._move_module(self._vocoder, device=self.device, dtype=self.dtype)
+        _cuda_synchronize()
+        cleanup_memory()
+
     def _validate_asset_paths(self, config: OfficialDistilledChunkConfig) -> None:
         mismatches = []
         if config.distilled_checkpoint_path != self.distilled_checkpoint_path:
@@ -480,12 +498,14 @@ class OfficialDistilledChunkRunner:
         _cuda_synchronize()
         cleanup_memory()
 
+        self._prepare_video_decode_components()
         decoded_video = vae_decode_video(
             final_video_state.latent,
             self._video_decoder,
             TilingConfig.default(),
             generator,
         )
+        self._prepare_audio_decode_components()
         decoded_audio = vae_decode_audio(final_audio_state.latent, self._audio_decoder, self._vocoder)
 
         return OfficialDistilledChunkResult(

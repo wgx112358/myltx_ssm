@@ -457,15 +457,49 @@ def test_offload_generation_components_moves_cached_modules_to_cpu(monkeypatch: 
     assert spatial_upsampler.to_calls[-1][0] == torch.device("cpu")
 
 
+def test_prepare_video_decode_components_offloads_audio_modules(monkeypatch: pytest.MonkeyPatch) -> None:
+    class FakeModule:
+        def __init__(self, name: str) -> None:
+            self.name = name
+            self.to_calls: list[tuple[torch.device, torch.dtype | None]] = []
+
+        def to(self, *, device: torch.device, dtype: torch.dtype | None = None):
+            self.to_calls.append((device, dtype))
+            return self
+
+    runner = OfficialDistilledChunkRunner(
+        distilled_checkpoint_path="/tmp/ltx-2.3-distilled.safetensors",
+        gemma_root="/tmp/gemma",
+        spatial_upsampler_path="/tmp/ltx-2.3-spatial-upscaler.safetensors",
+    )
+    runner.device = torch.device("cuda")
+    runner._video_decoder = FakeModule("video_decoder")
+    runner._audio_decoder = FakeModule("audio_decoder")
+    runner._vocoder = FakeModule("vocoder")
+    monkeypatch.setattr(distilled_streaming, "cleanup_memory", lambda: None)
+    monkeypatch.setattr(distilled_streaming.torch.cuda, "synchronize", lambda: None, raising=False)
+
+    runner._prepare_video_decode_components()
+
+    assert runner._video_decoder.to_calls[-1][0] == torch.device("cuda")
+    assert runner._audio_decoder.to_calls[-1][0] == torch.device("cpu")
+    assert runner._vocoder.to_calls[-1][0] == torch.device("cpu")
+
+
 def test_run_chunk_offloads_generation_before_decode(monkeypatch: pytest.MonkeyPatch) -> None:
     _install_fake_runner_dependencies(monkeypatch)
     offload_events: list[str] = []
+    video_decode_prep_events: list[str] = []
 
     def fake_offload_generation_components() -> None:
         offload_events.append("offloaded")
 
+    def fake_prepare_video_decode_components() -> None:
+        video_decode_prep_events.append("prepared")
+
     def fake_decode_video(*args, **kwargs):
         assert offload_events == ["offloaded"]
+        assert video_decode_prep_events == ["prepared"]
         return "decoded-video"
 
     monkeypatch.setattr(distilled_streaming, "vae_decode_video", fake_decode_video)
@@ -477,6 +511,7 @@ def test_run_chunk_offloads_generation_before_decode(monkeypatch: pytest.MonkeyP
         spatial_upsampler_path="/tmp/ltx-2.3-spatial-upscaler.safetensors",
     )
     monkeypatch.setattr(runner, "_offload_generation_components", fake_offload_generation_components)
+    monkeypatch.setattr(runner, "_prepare_video_decode_components", fake_prepare_video_decode_components)
 
     result = runner.run_chunk(_base_config())
 
